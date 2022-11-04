@@ -97,8 +97,8 @@ def check_labels(labels, estimator):
             label_encoder.fit(labels)
             labels = label_encoder.transform(labels)
     else:
-        if type(labels[0]) not in (np.float32, np.float64):
-            logger.info("The labels have been converted in float64")
+        if labels.dtype not in (np.float32, np.float64):
+            logger.info("The labels have been converted to float64")
             labels = labels.astype('float64')
 
     if False in np.isfinite(labels):
@@ -254,7 +254,7 @@ def check_parameters(estimator):
                              "Penalty term must be positive")
 
     # Verify that it is not the default value
-    if (estimator.penalty is None or estimator.penalty == "none") and estimator.lambda_1 != 0.1:
+    if (estimator.penalty is None or estimator.penalty == "none") and estimator.lambda_1 != 0.0:
         warnings.warn("Setting penalty='none' will ignore the lambda_1")
 
 

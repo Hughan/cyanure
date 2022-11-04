@@ -41,7 +41,7 @@ class ERM(BaseEstimator, ABC):
     def _warm_start(self, X, initial_weight, nclasses):
         if self.warm_start and hasattr(self, "coef_"):
             if self.verbose:
-                logger.info("Restart")
+                logger.info("Restarting with current coefficients")
             if self.fit_intercept:
                 initial_weight[-1, ] = self.intercept_
                 initial_weight[0:-1, ] = np.squeeze(self.coef_)
@@ -56,6 +56,10 @@ class ERM(BaseEstimator, ABC):
                 reset_dual = self.dual.shape[0] != n
             if not reset_dual and not self._binary_problem:
                 reset_dual = np.any(self.dual.shape != [n, nclasses])
+
+            if reset_dual and self.verbose:
+                logger.info("Resetting dual")
+
             if reset_dual and self._binary_problem:
                 self.dual = np.zeros(
                     n, dtype=X.dtype, order='F')
@@ -723,7 +727,9 @@ class Regression(ERM):
 
         X = self._validate_data(X, accept_sparse="csr", reset=False)
         pred = safe_sparse_dot(
-            X, self.coef_, dense_output=False) + self.intercept_
+            X, self.coef_, dense_output=False)
+        if self.fit_intercept:
+            pred = pred + self.intercept_
 
         return pred.squeeze()
 
@@ -1184,7 +1190,9 @@ def compute_r(estimator_name, aux, X, labels, active_set):
     """
     R = None
 
-    pred = aux.predict(X[:, active_set])
+    if len(active_set) > 0:
+        pred = aux.predict(X[:, active_set])
+        
     if estimator_name == "Lasso":
         if len(active_set) == 0:
             R = labels
@@ -1218,6 +1226,7 @@ def fit_large_feature_number(estimator, aux, X, labels):
             Labels matrix
     """
     n, p = X.shape
+    estimator_name = type(estimator).__name__
 
     scaling = 4.0
     init = min(100, p)
@@ -1230,9 +1239,9 @@ def fit_large_feature_number(estimator, aux, X, labels):
         estimator.intercept_ = 0
 
     for ii in range(num_as):
-        R = compute_r(estimator.__name__, aux, X, labels, active_set)
+        R = compute_r(estimator_name, aux, X, labels, active_set)
 
-        corr = np.abs(X.transpose().dot(R).ravel()) / n
+        corr = np.abs(X.T @ R) / n
         if n_active > 0:
             corr[active_set] = -10e10
         n_new_as = max(
@@ -1252,11 +1261,13 @@ def fit_large_feature_number(estimator, aux, X, labels):
                 len(active_set), dtype=X.dtype)
         n_active = len(active_set)
         if estimator.verbose:
-            logger.info("Size of the active set: {%d}", n_active)
+            logger.info(f"Size of the active set: {n_active}")
         aux.fit(X[:, active_set], labels)
-        estimator.coef_[active_set] = aux.coef_
-        if estimator.fit_intercept:
-            estimator.intercept_ = aux.intercept_
+
+    estimator.coef_[active_set] = aux.coef_
+    estimator.n_features_in_ = estimator.coef_.shape[0]
+    if estimator.fit_intercept:
+        estimator.intercept_ = aux.intercept_
 
 
 class Lasso(Regression):
